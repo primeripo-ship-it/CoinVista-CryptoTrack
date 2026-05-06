@@ -1,0 +1,1477 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoVault — Live Market Dashboard</title>
+
+    <!-- CDN Resources -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        heading: ['Space Grotesk', 'sans-serif'],
+                        body: ['DM Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* ========== CSS VARIABLES — THEME SYSTEM ========== */
+        :root {
+            --bg: #060a08;
+            --bg-secondary: #0c1210;
+            --card: #111a15;
+            --card-hover: #162019;
+            --border: #1c2b22;
+            --text: #e2ebe5;
+            --text-muted: #5e7a68;
+            --accent: #00e676;
+            --accent-glow: rgba(0,230,118,0.15);
+            --positive: #00e676;
+            --negative: #ff3d57;
+            --positive-bg: rgba(0,230,118,0.1);
+            --negative-bg: rgba(255,61,87,0.1);
+            --glass: rgba(17,26,21,0.85);
+            --shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        html.light {
+            --bg: #f0f4f2;
+            --bg-secondary: #ffffff;
+            --card: #ffffff;
+            --card-hover: #f5f9f7;
+            --border: #d4ddd8;
+            --text: #111a15;
+            --text-muted: #6b8272;
+            --accent: #00a152;
+            --accent-glow: rgba(0,165,82,0.12);
+            --positive: #008c46;
+            --negative: #d32f2f;
+            --positive-bg: rgba(0,140,70,0.08);
+            --negative-bg: rgba(211,47,47,0.08);
+            --glass: rgba(255,255,255,0.9);
+            --shadow: 0 8px 32px rgba(0,0,0,0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+            transition: background 0.4s, color 0.4s;
+        }
+
+        /* 背景氛围光效 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background:
+                radial-gradient(ellipse 600px 400px at 15% 10%, var(--accent-glow), transparent),
+                radial-gradient(ellipse 500px 500px at 85% 80%, rgba(0,230,118,0.04), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ========== 滚动条样式 ========== */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* ========== 动画 ========== */
+        @keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes slideUp { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes slideRight { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes pulse-glow { 0%,100% { box-shadow: 0 0 0 0 var(--accent-glow); } 50% { box-shadow: 0 0 20px 4px var(--accent-glow); } }
+        @keyframes flash-green { 0% { background:rgba(0,230,118,0.2); } 100% { background:transparent; } }
+        @keyframes flash-red { 0% { background:rgba(255,61,87,0.2); } 100% { background:transparent; } }
+        @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .animate-fade { animation: fadeIn 0.5s ease both; }
+        .animate-slide-up { animation: slideUp 0.5s ease both; }
+        .flash-up { animation: flash-green 1.2s ease-out; }
+        .flash-down { animation: flash-red 1.2s ease-out; }
+
+        /* 骨架屏加载效果 */
+        .skeleton {
+            background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: 6px;
+        }
+
+        /* ========== 组件样式 ========== */
+        .header-line {
+            position: relative;
+        }
+        .header-line::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            opacity: 0.4;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            transition: all 0.3s;
+        }
+        .stat-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+            transform: translateY(-2px);
+        }
+
+        .coin-row {
+            border-bottom: 1px solid var(--border);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .coin-row:hover {
+            background: var(--card-hover);
+        }
+        .coin-row:hover .coin-name {
+            color: var(--accent);
+        }
+
+        .btn-accent {
+            background: var(--accent);
+            color: #060a08;
+            font-weight: 600;
+            border-radius: 10px;
+            padding: 8px 20px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-accent:hover {
+            filter: brightness(1.15);
+            box-shadow: 0 0 16px var(--accent-glow);
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        .btn-ghost:hover, .btn-ghost.active {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .search-input {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text);
+            padding: 10px 16px 10px 42px;
+            width: 100%;
+            max-width: 360px;
+            font-size: 14px;
+            transition: all 0.3s;
+            outline: none;
+        }
+        .search-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .modal-content {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            width: 95%;
+            max-width: 860px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow);
+            transform: translateY(30px) scale(0.97);
+            transition: transform 0.3s;
+        }
+        .modal-overlay.open .modal-content {
+            transform: translateY(0) scale(1);
+        }
+
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 20px;
+            min-width: 280px;
+            max-width: 400px;
+            box-shadow: var(--shadow);
+            animation: slideRight 0.4s ease both;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast.success { border-left: 3px solid var(--positive); }
+        .toast.error { border-left: 3px solid var(--negative); }
+        .toast.info { border-left: 3px solid var(--accent); }
+
+        .watchlist-star {
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 16px;
+        }
+        .watchlist-star:hover { transform: scale(1.2); }
+        .watchlist-star.active { color: #ffc107; }
+        .watchlist-star:not(.active) { color: var(--text-muted); }
+
+        .sparkline-svg { overflow: visible; }
+
+        .timeframe-btn {
+            padding: 6px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .timeframe-btn.active, .timeframe-btn:hover {
+            background: var(--accent);
+            color: #060a08;
+            border-color: var(--accent);
+        }
+
+        .tab-btn {
+            padding: 8px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active {
+            background: var(--accent);
+            color: #060a08;
+        }
+
+        .trending-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+        .trending-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px var(--accent-glow);
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .hide-mobile { display: none !important; }
+            .stat-card { padding: 10px 14px; }
+        }
+
+        /* 减少动画偏好 */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* 加载旋转器 */
+        .spinner {
+            width: 32px; height: 32px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+    </style>
+</head>
+
+<body class="font-body relative">
+
+    <!-- ==================== 加载屏幕 ==================== -->
+    <div id="loading-screen" class="fixed inset-0 z-[300] flex items-center justify-center" style="background:var(--bg);">
+        <div class="text-center">
+            <div class="spinner mx-auto mb-4"></div>
+            <p class="font-heading text-lg font-semibold" style="color:var(--accent);">CryptoVault</p>
+            <p class="text-sm mt-1" style="color:var(--text-muted);">Loading market data...</p>
+        </div>
+    </div>
+
+    <!-- ==================== Toast 通知容器 ==================== -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- ==================== 头部导航 ==================== -->
+    <header class="header-line sticky top-0 z-50 backdrop-blur-xl" style="background:var(--glass);">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-2 shrink-0">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center" style="background:var(--accent);">
+                    <i class="fa-solid fa-chart-line text-sm" style="color:#060a08;"></i>
+                </div>
+                <span class="font-heading text-lg font-bold tracking-tight">CryptoVault</span>
+            </div>
+
+            <!-- 导航标签 -->
+            <nav class="hidden sm:flex items-center gap-1 p-1 rounded-xl" style="background:var(--bg-secondary);">
+                <button class="tab-btn active" data-tab="markets" onclick="switchTab('markets')">
+                    <i class="fa-solid fa-table-cells-large mr-1.5"></i>Markets
+                </button>
+                <button class="tab-btn" data-tab="watchlist" onclick="switchTab('watchlist')">
+                    <i class="fa-solid fa-star mr-1.5"></i>Watchlist
+                </button>
+                <button class="tab-btn" data-tab="alerts" onclick="switchTab('alerts')">
+                    <i class="fa-solid fa-bell mr-1.5"></i>Alerts
+                </button>
+            </nav>
+
+            <!-- 右侧控件 -->
+            <div class="flex items-center gap-3">
+                <!-- 货币选择器 -->
+                <select id="currency-select" onchange="changeCurrency(this.value)"
+                    class="text-sm font-semibold rounded-lg px-2 py-1.5 border cursor-pointer outline-none"
+                    style="background:var(--card);border-color:var(--border);color:var(--text);"
+                    aria-label="Select currency">
+                    <option value="usd">USD $</option>
+                    <option value="bdt">BDT ৳</option>
+                    <option value="eur">EUR €</option>
+                    <option value="gbp">GBP £</option>
+                </select>
+
+                <!-- 暗色模式切换 -->
+                <button id="theme-toggle" onclick="toggleTheme()"
+                    class="w-9 h-9 rounded-lg flex items-center justify-center border transition-all hover:scale-110"
+                    style="background:var(--card);border-color:var(--border);"
+                    aria-label="Toggle dark mode">
+                    <i class="fa-solid fa-moon text-sm" style="color:var(--accent);"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 移动端标签栏 -->
+        <div class="sm:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto">
+            <button class="tab-btn active text-xs" data-tab="markets" onclick="switchTab('markets')">Markets</button>
+            <button class="tab-btn text-xs" data-tab="watchlist" onclick="switchTab('watchlist')">Watchlist</button>
+            <button class="tab-btn text-xs" data-tab="alerts" onclick="switchTab('alerts')">Alerts</button>
+        </div>
+    </header>
+
+    <!-- ==================== 全局市场统计 ==================== -->
+    <section id="stats-bar" class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="stats-grid">
+            <div class="stat-card animate-fade" style="animation-delay:0.1s;">
+                <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">Total Market Cap</p>
+                <p class="font-heading font-bold text-sm sm:text-base" id="stat-mcap">—</p>
+            </div>
+            <div class="stat-card animate-fade" style="animation-delay:0.2s;">
+                <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">24h Volume</p>
+                <p class="font-heading font-bold text-sm sm:text-base" id="stat-vol">—</p>
+            </div>
+            <div class="stat-card animate-fade" style="animation-delay:0.3s;">
+                <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">BTC Dominance</p>
+                <p class="font-heading font-bold text-sm sm:text-base" id="stat-btc">—</p>
+            </div>
+            <div class="stat-card animate-fade" style="animation-delay:0.4s;">
+                <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">Last Updated</p>
+                <p class="font-heading font-bold text-sm sm:text-base" id="stat-updated">—</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== 搜索与筛选 ==================== -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 pb-3">
+        <div class="flex flex-wrap items-center gap-3">
+            <div class="relative flex-1 min-w-[200px] max-w-[360px]">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" style="color:var(--text-muted);"></i>
+                <input type="text" id="search-input" class="search-input" placeholder="Search coins..."
+                    oninput="handleSearch(this.value)" aria-label="Search cryptocurrencies">
+            </div>
+            <div class="flex items-center gap-2">
+                <button class="btn-ghost text-sm active" data-filter="all" onclick="setFilter('all')">All</button>
+                <button class="btn-ghost text-sm" data-filter="gainers" onclick="setFilter('gainers')">
+                    <i class="fa-solid fa-arrow-up mr-1" style="color:var(--positive);"></i>Gainers
+                </button>
+                <button class="btn-ghost text-sm" data-filter="losers" onclick="setFilter('losers')">
+                    <i class="fa-solid fa-arrow-down mr-1" style="color:var(--negative);"></i>Losers
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ==================== 主内容区域 ==================== -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 pb-8 relative z-10">
+
+        <!-- 市场表格视图 -->
+        <div id="markets-view">
+            <div class="rounded-2xl border overflow-hidden" style="background:var(--card);border-color:var(--border);">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[780px]">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <th class="text-left px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">#</th>
+                                <th class="text-left px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">Coin</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">Price</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">24h %</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold hide-mobile" style="color:var(--text-muted);">Market Cap</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold hide-mobile" style="color:var(--text-muted);">Volume (24h)</th>
+                                <th class="text-center px-4 py-3 text-xs font-semibold hide-mobile" style="color:var(--text-muted);">7D Chart</th>
+                                <th class="text-center px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="coins-tbody">
+                            <!-- 动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 自选列表视图 -->
+        <div id="watchlist-view" class="hidden">
+            <div id="watchlist-content"></div>
+        </div>
+
+        <!-- 价格警报视图 -->
+        <div id="alerts-view" class="hidden">
+            <div id="alerts-content"></div>
+        </div>
+    </main>
+
+    <!-- ==================== 热门趋势 ==================== -->
+    <section id="trending-section" class="max-w-7xl mx-auto px-4 sm:px-6 pb-10">
+        <h2 class="font-heading text-xl font-bold mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-fire" style="color:var(--accent);"></i> Trending Now
+        </h2>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3" id="trending-grid">
+            <!-- 动态填充 -->
+        </div>
+    </section>
+
+    <!-- ==================== 市场资讯 ==================== -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 pb-10">
+        <h2 class="font-heading text-xl font-bold mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-newspaper" style="color:var(--accent);"></i> Market Pulse
+        </h2>
+        <div class="grid md:grid-cols-3 gap-4" id="news-grid">
+            <!-- 动态填充 -->
+        </div>
+    </section>
+
+    <!-- ==================== 详情弹窗 ==================== -->
+    <div id="detail-modal" class="modal-overlay" onclick="if(event.target===this)closeDetail()">
+        <div class="modal-content" role="dialog" aria-modal="true" aria-label="Coin details">
+            <div id="detail-body" class="p-6 sm:p-8">
+                <!-- 动态填充 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 警报创建弹窗 ==================== -->
+    <div id="alert-modal" class="modal-overlay" onclick="if(event.target===this)closeAlertModal()">
+        <div class="modal-content" style="max-width:440px;" role="dialog" aria-modal="true" aria-label="Set price alert">
+            <div class="p-6">
+                <h3 class="font-heading font-bold text-lg mb-4">Set Price Alert</h3>
+                <p class="text-sm mb-3" style="color:var(--text-muted);" id="alert-coin-label">—</p>
+                <div class="mb-4">
+                    <label class="text-xs font-semibold block mb-1.5" style="color:var(--text-muted);">Target Price</label>
+                    <input type="number" id="alert-price-input" step="any" class="search-input pl-4 max-w-full"
+                        placeholder="Enter target price...">
+                </div>
+                <div class="mb-5">
+                    <label class="text-xs font-semibold block mb-1.5" style="color:var(--text-muted);">Alert when price goes</label>
+                    <div class="flex gap-2">
+                        <button class="btn-ghost text-sm flex-1 active" id="alert-above-btn" onclick="setAlertDir('above')">Above</button>
+                        <button class="btn-ghost text-sm flex-1" id="alert-below-btn" onclick="setAlertDir('below')">Below</button>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button class="btn-accent flex-1" onclick="confirmAlert()">Create Alert</button>
+                    <button class="btn-ghost flex-1" onclick="closeAlertModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 页脚 ==================== -->
+    <footer class="border-t py-6 text-center text-sm" style="border-color:var(--border);color:var(--text-muted);">
+        <p>CryptoVault &mdash; Real-time market data powered by <a href="https://www.coingecko.com/" target="_blank" rel="noopener" class="underline hover:text-[var(--accent)] transition-colors">CoinGecko</a></p>
+        <p class="mt-1 text-xs">Data refreshes automatically. Not financial advice.</p>
+    </footer>
+
+
+    <!-- ==================== 主应用脚本 ==================== -->
+    <script>
+    // ===========================================================
+    //  状态管理 — 集中式应用状态
+    // ===========================================================
+    const state = {
+        coins: [],               // 从 API 获取的所有币种数据
+        prevPrices: new Map(),   // 上一次价格，用于闪烁效果
+        watchlist: JSON.parse(localStorage.getItem('cv-watchlist') || '[]'),
+        alerts: JSON.parse(localStorage.getItem('cv-alerts') || '[]'),
+        darkMode: localStorage.getItem('cv-dark') !== 'light',
+        currency: localStorage.getItem('cv-currency') || 'usd',
+        searchQuery: '',
+        filter: 'all',           // all | gainers | losers
+        activeTab: 'markets',    // markets | watchlist | alerts
+        selectedCoin: null,      // 当前查看详情的币种
+        chartTimeframe: '24h',   // 1h | 24h | 7d
+        chartData: null,
+        globalData: null,
+        trending: [],
+        loading: true,
+        refreshTimer: null,
+        alertDirection: 'above',
+        alertCoinId: null,
+    };
+
+    // 货币符号映射
+    const CURRENCY_SYMBOLS = { usd: '$', bdt: '৳', eur: '€', gbp: '£' };
+
+    // Chart.js 实例引用
+    let chartInstance = null;
+
+    // ===========================================================
+    //  工具函数
+    // ===========================================================
+
+    /** 格式化价格（自动小数位） */
+    function formatPrice(price, cur) {
+        cur = cur || state.currency;
+        const sym = CURRENCY_SYMBOLS[cur] || '$';
+        if (price == null) return sym + '—';
+        const decimals = price < 1 ? 6 : price < 100 ? 4 : 2;
+        return sym + Number(price).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    }
+
+    /** 格式化大数字 (1.23T, 4.56B 等) */
+    function formatLarge(num, cur) {
+        cur = cur || state.currency;
+        const sym = CURRENCY_SYMBOLS[cur] || '$';
+        if (num == null) return sym + '—';
+        if (num >= 1e12) return sym + (num / 1e12).toFixed(2) + 'T';
+        if (num >= 1e9) return sym + (num / 1e9).toFixed(2) + 'B';
+        if (num >= 1e6) return sym + (num / 1e6).toFixed(2) + 'M';
+        if (num >= 1e3) return sym + (num / 1e3).toFixed(1) + 'K';
+        return sym + num.toFixed(2);
+    }
+
+    /** 格式化百分比 */
+    function formatPct(val) {
+        if (val == null) return '—';
+        const sign = val >= 0 ? '+' : '';
+        return sign + val.toFixed(2) + '%';
+    }
+
+    /** 生成迷你 SVG 迷你图 */
+    function sparklineSVG(data, isPositive) {
+        if (!data || data.length < 2) return '';
+        const w = 110, h = 36;
+        const min = Math.min(...data), max = Math.max(...data);
+        const range = max - min || 1;
+        const pts = data.map((v, i) => {
+            const x = (i / (data.length - 1)) * w;
+            const y = h - ((v - min) / range) * (h - 4) - 2;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        const color = isPositive ? 'var(--positive)' : 'var(--negative)';
+        return `<svg width="${w}" height="${h}" class="sparkline-svg"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+
+    /** 显示 Toast 通知 */
+    function showToast(msg, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const el = document.createElement('div');
+        el.className = `toast ${type}`;
+        const iconMap = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info' };
+        const colorMap = { success: 'var(--positive)', error: 'var(--negative)', info: 'var(--accent)' };
+        el.innerHTML = `<i class="fa-solid ${iconMap[type]}" style="color:${colorMap[type]};font-size:16px;"></i><span class="text-sm">${msg}</span>`;
+        container.appendChild(el);
+        setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(30px)'; el.style.transition = 'all 0.3s'; }, 3500);
+        setTimeout(() => el.remove(), 4000);
+    }
+
+    /** 保存状态到 localStorage */
+    function persist(key, val) {
+        localStorage.setItem('cv-' + key, JSON.stringify(val));
+    }
+
+    // ===========================================================
+    //  API 层 — CoinGecko 免费接口
+    // ===========================================================
+    const API_BASE = 'https://api.coingecko.com/api/v3';
+
+    /** 获取市场数据（前50币种，含7天迷你图数据） */
+    async function fetchCoins() {
+        const url = `${API_BASE}/coins/markets?vs_currency=${state.currency}&order=market_cap_desc&per_page=50&page=1&sparkline=true&price_change_percentage=1h%2C24h%2C7d`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        return res.json();
+    }
+
+    /** 获取全局市场数据 */
+    async function fetchGlobal() {
+        const res = await fetch(`${API_BASE}/global`);
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        return res.json();
+    }
+
+    /** 获取热门趋势币种 */
+    async function fetchTrending() {
+        const res = await fetch(`${API_BASE}/search/trending`);
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        return res.json();
+    }
+
+    /** 获取币种历史图表数据 */
+    async function fetchChartData(coinId, days) {
+        const res = await fetch(`${API_BASE}/coins/${coinId}/market_chart?vs_currency=${state.currency}&days=${days}`);
+        if (!res.ok) throw new Error(`API ${res.status}`);
+        return res.json();
+    }
+
+    // ===========================================================
+    //  渲染函数
+    // ===========================================================
+
+    /** 渲染全局统计数据 */
+    function renderStats() {
+        const d = state.globalData;
+        if (!d) return;
+        const cur = state.currency;
+        document.getElementById('stat-mcap').textContent = formatLarge(d.total_market_cap?.[cur], cur);
+        document.getElementById('stat-vol').textContent = formatLarge(d.total_volume?.[cur], cur);
+        document.getElementById('stat-btc').textContent = (d.market_cap_percentage?.btc || 0).toFixed(1) + '%';
+        document.getElementById('stat-updated').textContent = new Date().toLocaleTimeString();
+    }
+
+    /** 渲染币种表格 */
+    function renderTable(coins) {
+        const tbody = document.getElementById('coins-tbody');
+        if (!coins || coins.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center py-12" style="color:var(--text-muted);">
+                <i class="fa-solid fa-coins text-3xl mb-3 block" style="color:var(--border);"></i>
+                No coins found. Try a different search or filter.
+            </td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = coins.map((coin, i) => {
+            const change24 = coin.price_change_percentage_24h_in_currency;
+            const isUp = change24 >= 0;
+            const changeColor = isUp ? 'var(--positive)' : 'var(--negative)';
+            const prevPrice = state.prevPrices.get(coin.id);
+            let flashClass = '';
+            if (prevPrice != null && prevPrice !== coin.current_price) {
+                flashClass = coin.current_price > prevPrice ? 'flash-up' : 'flash-down';
+            }
+
+            const isWatched = state.watchlist.includes(coin.id);
+            const sparkData = coin.sparkline_in_7d?.price;
+            const sparkUp = (coin.price_change_percentage_7d_in_currency || 0) >= 0;
+
+            return `<tr class="coin-row ${flashClass}" onclick="openDetail('${coin.id}')" style="animation-delay:${i * 20}ms;">
+                <td class="px-4 py-3.5 text-sm font-semibold" style="color:var(--text-muted);">${coin.market_cap_rank || i + 1}</td>
+                <td class="px-4 py-3.5">
+                    <div class="flex items-center gap-3">
+                        <img src="${coin.image}" alt="${coin.name}" class="w-7 h-7 rounded-full" loading="lazy" onerror="this.style.display='none'">
+                        <div>
+                            <span class="coin-name font-semibold text-sm transition-colors">${coin.name}</span>
+                            <span class="ml-1.5 text-xs font-medium" style="color:var(--text-muted);">${coin.symbol.toUpperCase()}</span>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-4 py-3.5 text-right font-semibold text-sm font-heading">${formatPrice(coin.current_price)}</td>
+                <td class="px-4 py-3.5 text-right">
+                    <span class="text-sm font-semibold" style="color:${changeColor};">
+                        <i class="fa-solid fa-caret-${isUp ? 'up' : 'down'} mr-0.5"></i>${formatPct(change24)}
+                    </span>
+                </td>
+                <td class="px-4 py-3.5 text-right text-sm hide-mobile" style="color:var(--text-muted);">${formatLarge(coin.market_cap)}</td>
+                <td class="px-4 py-3.5 text-right text-sm hide-mobile" style="color:var(--text-muted);">${formatLarge(coin.total_volume)}</td>
+                <td class="px-4 py-3.5 text-center hide-mobile">${sparklineSVG(sparkData, sparkUp)}</td>
+                <td class="px-4 py-3.5 text-center" onclick="event.stopPropagation();">
+                    <span class="watchlist-star ${isWatched ? 'active' : ''}" onclick="toggleWatchlist('${coin.id}')" aria-label="Toggle watchlist">
+                        <i class="fa-${isWatched ? 'solid' : 'regular'} fa-star"></i>
+                    </span>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    /** 渲染热门趋势 */
+    function renderTrending() {
+        const grid = document.getElementById('trending-grid');
+        if (!state.trending || state.trending.length === 0) {
+            grid.innerHTML = '';
+            return;
+        }
+        grid.innerHTML = state.trending.slice(0, 7).map((item, i) => {
+            const coin = item.item;
+            const change = coin.data?.price_change_percentage_24h?.usd || 0;
+            const isUp = change >= 0;
+            return `<div class="trending-card cursor-pointer animate-fade" style="animation-delay:${i * 80}ms;"
+                onclick="openDetail('${coin.id}')">
+                <div class="flex items-center gap-2 mb-2">
+                    <img src="${coin.small}" alt="${coin.name}" class="w-6 h-6 rounded-full" loading="lazy">
+                    <span class="font-semibold text-sm truncate">${coin.symbol.toUpperCase()}</span>
+                    <span class="text-xs px-1.5 py-0.5 rounded font-semibold"
+                        style="background:${isUp ? 'var(--positive-bg)' : 'var(--negative-bg)'};color:${isUp ? 'var(--positive)' : 'var(--negative)'};">
+                        ${isUp ? '+' : ''}${change.toFixed(2)}%
+                    </span>
+                </div>
+                <p class="text-xs truncate" style="color:var(--text-muted);">${coin.name}</p>
+                <p class="text-xs mt-1" style="color:var(--text-muted);">Rank #${coin.market_cap_rank || '—'}</p>
+            </div>`;
+        }).join('');
+    }
+
+    /** 渲染市场资讯（静态内容，因免费新闻 API 有限制） */
+    function renderNews() {
+        const articles = [
+            { title: 'Bitcoin ETF Inflows Surge Past $500M in Single Day', tag: 'Bitcoin', time: '2h ago',
+              desc: 'Institutional demand for Bitcoin ETFs continues to accelerate, with daily inflows reaching new highs.' },
+            { title: 'Ethereum Layer 2 Solutions Hit Record Transaction Volume', tag: 'Ethereum', time: '5h ago',
+              desc: 'Scaling solutions built on Ethereum process more transactions than ever, signaling growing adoption.' },
+            { title: 'Global Regulators Push for Unified Crypto Framework', tag: 'Regulation', time: '8h ago',
+              desc: 'Major economies collaborate on standardized cryptocurrency regulations to protect investors and foster innovation.' },
+        ];
+        const grid = document.getElementById('news-grid');
+        grid.innerHTML = articles.map((a, i) => `
+            <article class="stat-card animate-fade cursor-default" style="animation-delay:${i * 100}ms;">
+                <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded-md mb-3"
+                    style="background:var(--accent-glow);color:var(--accent);">${a.tag}</span>
+                <h3 class="font-heading font-bold text-sm mb-2 leading-snug">${a.title}</h3>
+                <p class="text-xs leading-relaxed mb-2" style="color:var(--text-muted);">${a.desc}</p>
+                <span class="text-xs" style="color:var(--text-muted);"><i class="fa-regular fa-clock mr-1"></i>${a.time}</span>
+            </article>
+        `).join('');
+    }
+
+    /** 渲染自选列表 */
+    function renderWatchlist() {
+        const container = document.getElementById('watchlist-content');
+        const watched = state.coins.filter(c => state.watchlist.includes(c.id));
+        if (watched.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-16" style="color:var(--text-muted);">
+                    <i class="fa-regular fa-star text-4xl mb-4 block" style="color:var(--border);"></i>
+                    <p class="font-heading font-semibold text-lg mb-1">Your watchlist is empty</p>
+                    <p class="text-sm">Click the star icon next to any coin to add it here.</p>
+                </div>`;
+            return;
+        }
+        // 复用表格布局
+        container.innerHTML = `
+            <div class="rounded-2xl border overflow-hidden" style="background:var(--card);border-color:var(--border);">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[780px]">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <th class="text-left px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">#</th>
+                                <th class="text-left px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">Coin</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">Price</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);">24h %</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold hide-mobile" style="color:var(--text-muted);">Market Cap</th>
+                                <th class="text-right px-4 py-3 text-xs font-semibold hide-mobile" style="color:var(--text-muted);">Volume</th>
+                                <th class="text-center px-4 py-3 text-xs font-semibold hide-mobile" style="color:var(--text-muted);">7D</th>
+                                <th class="text-center px-4 py-3 text-xs font-semibold" style="color:var(--text-muted);"></th>
+                            </tr>
+                        </thead>
+                        <tbody>${watched.map((coin, i) => {
+                            const change24 = coin.price_change_percentage_24h_in_currency;
+                            const isUp = change24 >= 0;
+                            const changeColor = isUp ? 'var(--positive)' : 'var(--negative)';
+                            const sparkData = coin.sparkline_in_7d?.price;
+                            const sparkUp = (coin.price_change_percentage_7d_in_currency || 0) >= 0;
+                            return `<tr class="coin-row" onclick="openDetail('${coin.id}')">
+                                <td class="px-4 py-3.5 text-sm font-semibold" style="color:var(--text-muted);">${coin.market_cap_rank || ''}</td>
+                                <td class="px-4 py-3.5"><div class="flex items-center gap-3">
+                                    <img src="${coin.image}" alt="" class="w-7 h-7 rounded-full" loading="lazy">
+                                    <div><span class="coin-name font-semibold text-sm">${coin.name}</span>
+                                    <span class="ml-1.5 text-xs font-medium" style="color:var(--text-muted);">${coin.symbol.toUpperCase()}</span></div>
+                                </div></td>
+                                <td class="px-4 py-3.5 text-right font-semibold text-sm font-heading">${formatPrice(coin.current_price)}</td>
+                                <td class="px-4 py-3.5 text-right"><span class="text-sm font-semibold" style="color:${changeColor};">
+                                    <i class="fa-solid fa-caret-${isUp ? 'up' : 'down'} mr-0.5"></i>${formatPct(change24)}</span></td>
+                                <td class="px-4 py-3.5 text-right text-sm hide-mobile" style="color:var(--text-muted);">${formatLarge(coin.market_cap)}</td>
+                                <td class="px-4 py-3.5 text-right text-sm hide-mobile" style="color:var(--text-muted);">${formatLarge(coin.total_volume)}</td>
+                                <td class="px-4 py-3.5 text-center hide-mobile">${sparklineSVG(sparkData, sparkUp)}</td>
+                                <td class="px-4 py-3.5 text-center" onclick="event.stopPropagation();">
+                                    <span class="watchlist-star active" onclick="toggleWatchlist('${coin.id}')"><i class="fa-solid fa-star"></i></span>
+                                </td>
+                            </tr>`;
+                        }).join('')}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    }
+
+    /** 渲染警报列表 */
+    function renderAlerts() {
+        const container = document.getElementById('alerts-content');
+        if (state.alerts.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-16" style="color:var(--text-muted);">
+                    <i class="fa-regular fa-bell text-4xl mb-4 block" style="color:var(--border);"></i>
+                    <p class="font-heading font-semibold text-lg mb-1">No price alerts set</p>
+                    <p class="text-sm">Open a coin detail and click "Set Alert" to create one.</p>
+                </div>`;
+            return;
+        }
+        container.innerHTML = `
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                ${state.alerts.map((a, i) => {
+                    const coin = state.coins.find(c => c.id === a.coinId);
+                    const currentPrice = coin ? coin.current_price : null;
+                    const sym = CURRENCY_SYMBOLS[a.currency || 'usd'] || '$';
+                    const isTriggered = currentPrice != null && (
+                        (a.direction === 'above' && currentPrice >= a.target) ||
+                        (a.direction === 'below' && currentPrice <= a.target)
+                    );
+                    return `<div class="stat-card ${isTriggered ? 'border-[var(--accent)]' : ''}" style="${isTriggered ? 'border-color:var(--accent);box-shadow:0 0 16px var(--accent-glow);' : ''}">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex items-center gap-2">
+                                ${coin ? `<img src="${coin.image}" class="w-5 h-5 rounded-full" loading="lazy">` : ''}
+                                <span class="font-semibold text-sm">${a.coinSymbol || a.coinId}</span>
+                            </div>
+                            <button onclick="removeAlert(${i})" class="text-xs hover:text-[var(--negative)] transition-colors" style="color:var(--text-muted);" aria-label="Remove alert">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                        <p class="text-xs mb-1" style="color:var(--text-muted);">
+                            ${a.direction === 'above' ? 'Goes above' : 'Goes below'} ${sym}${a.target.toLocaleString()}
+                        </p>
+                        <p class="text-xs" style="color:var(--text-muted);">
+                            Current: ${currentPrice != null ? formatPrice(currentPrice, a.currency) : '—'}
+                        </p>
+                        ${isTriggered ? `<p class="text-xs font-semibold mt-2" style="color:var(--accent);"><i class="fa-solid fa-bell mr-1"></i>Triggered!</p>` : ''}
+                    </div>`;
+                }).join('')}
+            </div>`;
+    }
+
+    /** 渲染详情弹窗内容 */
+    function renderDetail(coin) {
+        if (!coin) return;
+        const change24 = coin.price_change_percentage_24h_in_currency;
+        const change1h = coin.price_change_percentage_1h_in_currency;
+        const change7d = coin.price_change_percentage_7d_in_currency;
+        const isUp24 = change24 >= 0;
+        const isWatched = state.watchlist.includes(coin.id);
+
+        document.getElementById('detail-body').innerHTML = `
+            <!-- 头部：关闭按钮 -->
+            <div class="flex items-start justify-between mb-6">
+                <div class="flex items-center gap-4">
+                    <img src="${coin.image}" alt="${coin.name}" class="w-12 h-12 rounded-full">
+                    <div>
+                        <h2 class="font-heading text-xl font-bold flex items-center gap-2">
+                            ${coin.name}
+                            <span class="text-sm font-medium" style="color:var(--text-muted);">${coin.symbol.toUpperCase()}</span>
+                            <span class="text-xs px-2 py-0.5 rounded-md font-semibold" style="background:var(--accent-glow);color:var(--accent);">Rank #${coin.market_cap_rank}</span>
+                        </h2>
+                        <div class="flex items-center gap-3 mt-1">
+                            <span class="font-heading text-2xl font-bold">${formatPrice(coin.current_price)}</span>
+                            <span class="text-sm font-semibold" style="color:${isUp24 ? 'var(--positive)' : 'var(--negative)'};">
+                                <i class="fa-solid fa-caret-${isUp24 ? 'up' : 'down'} mr-0.5"></i>${formatPct(change24)}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="closeDetail()" class="w-8 h-8 rounded-lg flex items-center justify-center border transition-colors hover:bg-[var(--card-hover)]"
+                    style="border-color:var(--border);" aria-label="Close">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- 价格变化卡片 -->
+            <div class="grid grid-cols-3 gap-3 mb-6">
+                <div class="stat-card text-center">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">1h</p>
+                    <p class="font-heading font-bold text-sm" style="color:${change1h >= 0 ? 'var(--positive)' : 'var(--negative)'};">${formatPct(change1h)}</p>
+                </div>
+                <div class="stat-card text-center">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">24h</p>
+                    <p class="font-heading font-bold text-sm" style="color:${change24 >= 0 ? 'var(--positive)' : 'var(--negative)'};">${formatPct(change24)}</p>
+                </div>
+                <div class="stat-card text-center">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">7d</p>
+                    <p class="font-heading font-bold text-sm" style="color:${change7d >= 0 ? 'var(--positive)' : 'var(--negative)'};">${formatPct(change7d)}</p>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-heading font-semibold text-sm">Price Chart</h3>
+                    <div class="flex gap-2">
+                        <button class="timeframe-btn ${state.chartTimeframe === '1h' ? 'active' : ''}" onclick="changeTimeframe('1h')">1H</button>
+                        <button class="timeframe-btn ${state.chartTimeframe === '24h' ? 'active' : ''}" onclick="changeTimeframe('24h')">24H</button>
+                        <button class="timeframe-btn ${state.chartTimeframe === '7d' ? 'active' : ''}" onclick="changeTimeframe('7d')">7D</button>
+                    </div>
+                </div>
+                <div class="rounded-xl border p-4" style="background:var(--bg-secondary);border-color:var(--border);">
+                    <div id="chart-container" style="height:280px;position:relative;">
+                        <div id="chart-loading" class="absolute inset-0 flex items-center justify-center">
+                            <div class="spinner"></div>
+                        </div>
+                        <canvas id="price-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 市场数据卡片 -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                <div class="stat-card">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">Market Cap</p>
+                    <p class="font-heading font-bold text-sm">${formatLarge(coin.market_cap)}</p>
+                </div>
+                <div class="stat-card">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">24h Volume</p>
+                    <p class="font-heading font-bold text-sm">${formatLarge(coin.total_volume)}</p>
+                </div>
+                <div class="stat-card">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">Circulating Supply</p>
+                    <p class="font-heading font-bold text-sm">${coin.circulating_supply ? Number(coin.circulating_supply).toLocaleString() : '—'}</p>
+                </div>
+                <div class="stat-card">
+                    <p class="text-xs font-medium mb-1" style="color:var(--text-muted);">Max Supply</p>
+                    <p class="font-heading font-bold text-sm">${coin.max_supply ? Number(coin.max_supply).toLocaleString() : 'Unlimited'}</p>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex gap-3">
+                <button class="btn-accent flex-1 flex items-center justify-center gap-2"
+                    onclick="toggleWatchlist('${coin.id}');renderDetail(state.coins.find(c=>c.id==='${coin.id}'));">
+                    <i class="fa-${isWatched ? 'solid' : 'regular'} fa-star"></i>
+                    ${isWatched ? 'Remove from Watchlist' : 'Add to Watchlist'}
+                </button>
+                <button class="btn-ghost flex-1 flex items-center justify-center gap-2"
+                    onclick="openAlertModal('${coin.id}','${coin.symbol.toUpperCase()}')">
+                    <i class="fa-solid fa-bell"></i>Set Alert
+                </button>
+            </div>
+        `;
+    }
+
+    /** 创建/更新 Chart.js 图表 */
+    function renderChart(data) {
+        const canvas = document.getElementById('price-chart');
+        const loadingEl = document.getElementById('chart-loading');
+        if (!canvas || !data) return;
+
+        if (loadingEl) loadingEl.style.display = 'none';
+
+        // 销毁旧图表
+        if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+
+        const prices = data.prices;
+        if (!prices || prices.length === 0) return;
+
+        const isPositive = prices[prices.length - 1][1] >= prices[0][1];
+        const ctx = canvas.getContext('2d');
+
+        // 创建渐变填充
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.parentElement.clientHeight);
+        if (isPositive) {
+            gradient.addColorStop(0, 'rgba(0,230,118,0.25)');
+            gradient.addColorStop(1, 'rgba(0,230,118,0.0)');
+        } else {
+            gradient.addColorStop(0, 'rgba(255,61,87,0.25)');
+            gradient.addColorStop(1, 'rgba(255,61,87,0.0)');
+        }
+
+        // 格式化时间标签
+        const labels = prices.map(([ts]) => {
+            const d = new Date(ts);
+            if (state.chartTimeframe === '1h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (state.chartTimeframe === '24h') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        });
+        const priceValues = prices.map(([, p]) => p);
+
+        chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    data: priceValues,
+                    borderColor: isPositive ? '#00e676' : '#ff3d57',
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 0,
+                    pointHoverRadius: 5,
+                    pointHoverBackgroundColor: isPositive ? '#00e676' : '#ff3d57',
+                    pointHoverBorderColor: '#fff',
+                    pointHoverBorderWidth: 2,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,26,21,0.95)',
+                        titleColor: '#e2ebe5',
+                        bodyColor: '#e2ebe5',
+                        borderColor: isPositive ? 'rgba(0,230,118,0.3)' : 'rgba(255,61,87,0.3)',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 10,
+                        displayColors: false,
+                        titleFont: { family: 'Space Grotesk', weight: '600' },
+                        bodyFont: { family: 'DM Sans', size: 14 },
+                        callbacks: {
+                            label: (item) => formatPrice(item.raw)
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        grid: { display: false },
+                        ticks: {
+                            color: 'rgba(94,122,104,0.6)',
+                            font: { size: 10, family: 'DM Sans' },
+                            maxTicksLimit: 6,
+                            maxRotation: 0,
+                        },
+                        border: { display: false }
+                    },
+                    y: {
+                        display: false,
+                    }
+                },
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                animation: {
+                    duration: 800,
+                    easing: 'easeInOutQuart'
+                }
+            }
+        });
+    }
+
+    // ===========================================================
+    //  事件处理
+    // ===========================================================
+
+    /** 切换标签页 */
+    function switchTab(tab) {
+        state.activeTab = tab;
+        // 更新标签按钮状态
+        document.querySelectorAll('[data-tab]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+        // 切换视图
+        document.getElementById('markets-view').classList.toggle('hidden', tab !== 'markets');
+        document.getElementById('watchlist-view').classList.toggle('hidden', tab !== 'watchlist');
+        document.getElementById('alerts-view').classList.toggle('hidden', tab !== 'alerts');
+
+        if (tab === 'watchlist') renderWatchlist();
+        if (tab === 'alerts') renderAlerts();
+    }
+
+    /** 搜索处理 */
+    function handleSearch(query) {
+        state.searchQuery = query.toLowerCase().trim();
+        applyFilters();
+    }
+
+    /** 设置筛选器 */
+    function setFilter(filter) {
+        state.filter = filter;
+        document.querySelectorAll('[data-filter]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.filter === filter);
+        });
+        applyFilters();
+    }
+
+    /** 应用搜索和筛选 */
+    function applyFilters() {
+        let filtered = [...state.coins];
+
+        // 搜索
+        if (state.searchQuery) {
+            filtered = filtered.filter(c =>
+                c.name.toLowerCase().includes(state.searchQuery) ||
+                c.symbol.toLowerCase().includes(state.searchQuery)
+            );
+        }
+
+        // 筛选涨跌
+        if (state.filter === 'gainers') {
+            filtered = filtered.filter(c => (c.price_change_percentage_24h_in_currency || 0) > 0);
+        } else if (state.filter === 'losers') {
+            filtered = filtered.filter(c => (c.price_change_percentage_24h_in_currency || 0) < 0);
+        }
+
+        renderTable(filtered);
+    }
+
+    /** 切换暗色/亮色主题 */
+    function toggleTheme() {
+        state.darkMode = !state.darkMode;
+        document.documentElement.classList.toggle('dark', state.darkMode);
+        document.documentElement.classList.toggle('light', !state.darkMode);
+        persist('dark', state.darkMode ? 'dark' : 'light');
+
+        // 更新图标
+        const icon = document.querySelector('#theme-toggle i');
+        icon.className = state.darkMode ? 'fa-solid fa-moon text-sm' : 'fa-solid fa-sun text-sm';
+    }
+
+    /** 切换货币 */
+    function changeCurrency(cur) {
+        state.currency = cur;
+        persist('currency', cur);
+        // 重新获取数据
+        loadData();
+    }
+
+    /** 切换自选 */
+    function toggleWatchlist(coinId) {
+        const idx = state.watchlist.indexOf(coinId);
+        if (idx > -1) {
+            state.watchlist.splice(idx, 1);
+            showToast('Removed from watchlist', 'info');
+        } else {
+            state.watchlist.push(coinId);
+            showToast('Added to watchlist', 'success');
+        }
+        persist('watchlist', state.watchlist);
+        applyFilters();
+        if (state.activeTab === 'watchlist') renderWatchlist();
+    }
+
+    /** 打开币种详情弹窗 */
+    async function openDetail(coinId) {
+        const coin = state.coins.find(c => c.id === coinId);
+        if (!coin) return;
+        state.selectedCoin = coin;
+        state.chartTimeframe = '24h';
+
+        renderDetail(coin);
+        document.getElementById('detail-modal').classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // 加载图表数据
+        await loadChartData(coinId, 1);
+    }
+
+    /** 关闭详情弹窗 */
+    function closeDetail() {
+        document.getElementById('detail-modal').classList.remove('open');
+        document.body.style.overflow = '';
+        state.selectedCoin = null;
+        if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+    }
+
+    /** 切换图表时间范围 */
+    async function changeTimeframe(tf) {
+        state.chartTimeframe = tf;
+        // 更新按钮状态
+        document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.textContent.trim().toLowerCase() === tf);
+        });
+        if (state.selectedCoin) {
+            const days = tf === '1h' ? 0.042 : tf === '24h' ? 1 : 7;
+            await loadChartData(state.selectedCoin.id, days);
+        }
+    }
+
+    /** 加载图表数据 */
+    async function loadChartData(coinId, days) {
+        const loadingEl = document.getElementById('chart-loading');
+        if (loadingEl) loadingEl.style.display = 'flex';
+        try {
+            const data = await fetchChartData(coinId, days);
+            state.chartData = data;
+            renderChart(data);
+        } catch (e) {
+            console.error('Chart data error:', e);
+            if (loadingEl) loadingEl.innerHTML = '<p class="text-sm" style="color:var(--text-muted);">Failed to load chart</p>';
+        }
+    }
+
+    /** 打开警报创建弹窗 */
+    function openAlertModal(coinId, coinSymbol) {
+        state.alertCoinId = coinId;
+        state.alertDirection = 'above';
+        document.getElementById('alert-coin-label').textContent = `${coinSymbol} — Current: ${formatPrice(state.coins.find(c => c.id === coinId)?.current_price)}`;
+        document.getElementById('alert-price-input').value = '';
+        document.getElementById('alert-above-btn').classList.add('active');
+        document.getElementById('alert-below-btn').classList.remove('active');
+        document.getElementById('alert-modal').classList.add('open');
+    }
+
+    /** 关闭警报创建弹窗 */
+    function closeAlertModal() {
+        document.getElementById('alert-modal').classList.remove('open');
+    }
+
+    /** 设置警报方向 */
+    function setAlertDir(dir) {
+        state.alertDirection = dir;
+        document.getElementById('alert-above-btn').classList.toggle('active', dir === 'above');
+        document.getElementById('alert-below-btn').classList.toggle('active', dir === 'below');
+    }
+
+    /** 确认创建警报 */
+    function confirmAlert() {
+        const priceInput = document.getElementById('alert-price-input');
+        const target = parseFloat(priceInput.value);
+        if (!target || target <= 0) {
+            showToast('Please enter a valid price', 'error');
+            return;
+        }
+        const coin = state.coins.find(c => c.id === state.alertCoinId);
+        state.alerts.push({
+            coinId: state.alertCoinId,
+            coinSymbol: coin?.symbol?.toUpperCase() || state.alertCoinId,
+            target,
+            direction: state.alertDirection,
+            currency: state.currency,
+            createdAt: Date.now(),
+        });
+        persist('alerts', state.alerts);
+        closeAlertModal();
+        showToast(`Alert set for ${coin?.symbol?.toUpperCase() || state.alertCoinId} ${state.alertDirection} ${formatPrice(target)}`, 'success');
+    }
+
+    /** 删除警报 */
+    function removeAlert(index) {
+        state.alerts.splice(index, 1);
+        persist('alerts', state.alerts);
+        renderAlerts();
+        showToast('Alert removed', 'info');
+    }
+
+    /** 检查价格警报是否触发 */
+    function checkAlerts() {
+        state.alerts.forEach((a, i) => {
+            const coin = state.coins.find(c => c.id === a.coinId);
+            if (!coin) return;
+            const price = coin.current_price;
+            if (price == null) return;
+
+            const triggered = (a.direction === 'above' && price >= a.target) ||
+                              (a.direction === 'below' && price <= a.target);
+
+            if (triggered && !a.triggered) {
+                a.triggered = true;
+                const sym = CURRENCY_SYMBOLS[a.currency || 'usd'] || '$';
+                showToast(`${a.coinSymbol} is now ${a.direction} ${sym}${a.target.toLocaleString()}! Current: ${formatPrice(price, a.currency)}`, 'success');
+
+                // 浏览器通知（需权限）
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification(`CryptoVault Alert: ${a.coinSymbol}`, {
+                        body: `Price is ${a.direction} ${sym}${a.target.toLocaleString()} (${formatPrice(price, a.currency)})`,
+                        icon: coin.image
+                    });
+                }
+            }
+        });
+        persist('alerts', state.alerts);
+    }
+
+    // ===========================================================
+    //  数据加载
+    // ===========================================================
+
+    /** 加载所有数据 */
+    async function loadData() {
+        try {
+            const [coins, globalData] = await Promise.allSettled([
+                fetchCoins(),
+                fetchGlobal()
+            ]);
+
+            if (coins.status === 'fulfilled') {
+                // 记录旧价格用于闪烁
+                state.prevPrices.clear();
+                state.coins.forEach(c => state.prevPrices.set(c.id, c.current_price));
+
+                state.coins = coins.value;
+                state.loading = false;
+                applyFilters();
+                checkAlerts();
+            } else {
+                console.error('Coins fetch error:', coins.reason);
+                if (state.coins.length === 0) {
+                    showToast('Failed to load market data. Retrying...', 'error');
+                }
+            }
+
+            if (globalData.status === 'fulfilled') {
+                state.globalData = globalData.value.data;
+                renderStats();
+            }
+
+            // 更新加载屏幕
+            if (!state.loading) {
+                const ls = document.getElementById('loading-screen');
+                if (ls) {
+                    ls.style.opacity = '0';
+                    ls.style.transition = 'opacity 0.5s';
+                    setTimeout(() => ls.remove(), 500);
+                }
+            }
+        } catch (e) {
+            console.error('Data load error:', e);
+            state.loading = false;
+            const ls = document.getElementById('loading-screen');
+            if (ls) {
+                ls.innerHTML = `<div class="text-center"><i class="fa-solid fa-triangle-exclamation text-3xl mb-3" style="color:var(--negative);"></i>
+                    <p class="font-heading font-semibold">Failed to load data</p>
+                    <p class="text-sm mt-1" style="color:var(--text-muted);">Check your connection and refresh.</p></div>`;
+            }
+        }
+    }
+
+    /** 加载热门趋势数据 */
+    async function loadTrending() {
+        try {
+            const data = await fetchTrending();
+            state.trending = data.coins || [];
+            renderTrending();
+        } catch (e) {
+            console.error('Trending fetch error:', e);
+        }
+    }
+
+    // ===========================================================
+    //  键盘快捷键
+    // ===========================================================
+    document.addEventListener('keydown', (e) => {
+        // Escape 关闭弹窗
+        if (e.key === 'Escape') {
+            if (document.getElementById('alert-modal').classList.contains('open')) {
+                closeAlertModal();
+            } else if (document.getElementById('detail-modal').classList.contains('open')) {
+                closeDetail();
+            }
+        }
+        // / 聚焦搜索框
+        if (e.key === '/' && !e.ctrlKey && !e.metaKey) {
+            const active = document.activeElement;
+            if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                document.getElementById('search-input').focus();
+            }
+        }
+    });
+
+    // ===========================================================
+    //  初始化
+    // ===========================================================
+    async function init() {
+        // 应用保存的主题
+        if (!state.darkMode) {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.classList.add('light');
+            document.querySelector('#theme-toggle i').className = 'fa-solid fa-sun text-sm';
+        }
+
+        // 应用保存的货币
+        if (state.currency !== 'usd') {
+            document.getElementById('currency-select').value = state.currency;
+        }
+
+        // 请求浏览器通知权限
+        if ('Notification' in window && Notification.permission === 'default') {
+            // 延迟请求，避免用户还没看到页面就弹权限
+            setTimeout(() => Notification.requestPermission(), 5000);
+        }
+
+        // 渲染静态内容
+        renderNews();
+
+        // 加载数据
+        await loadData();
+        loadTrending();
+
+        // 设置自动刷新（每15秒，避免触发 CoinGecko 频率限制）
+        state.refreshTimer = setInterval(() => {
+            loadData();
+        }, 15000);
+
+        // 热门趋势每5分钟刷新
+        setInterval(loadTrending, 300000);
+    }
+
+    // 启动应用
+    init();
+    </script>
+
+</body>
+</html>
